@@ -16,7 +16,24 @@ function simplesaml_auth_admin_settings() {
     '#default_value' => variable_get('simplesaml_auth_installdir', ''),
     '#size' => 30,
     '#description' => t('The base directory of simpleSAMLphp. Absolute path with no trailing slash. Ex. /var/simplesamlphp'),
+    '#element_validate' => array('token_element_validate'),
+    '#after_build' => array('token_element_validate'),
+    '#token_types' => 'all',
   );
+
+  // Display the user documentation of placeholders supported by
+  // this module, as a description on the last pattern
+  $form['token_help'] = array(
+    '#title' => t('Replacement patterns'),
+    '#type' => 'fieldset',
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+  );
+  $form['token_help']['help'] = array(
+    '#theme' => 'token_tree',
+    '#token_types' => 'all',
+  );
+
 
   $form['simplesaml_auth_authsource'] = array(
     '#type' => 'textfield',
