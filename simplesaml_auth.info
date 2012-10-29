@@ -2,4 +2,6 @@ name = SimpleSAML Auth
 package = Authentication
 core = 7.x
 description = "Provides single sign-on via SimpleSAML"
-configure = admin/config/people/simplesaml_auth
+configure = admin/config/people/simplesaml-auth
+
+dependencies[] = token
