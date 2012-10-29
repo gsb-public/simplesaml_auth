@@ -31,7 +31,7 @@ function simplesaml_auth_admin_settings() {
   );
   $form['token_help']['help'] = array(
     '#theme' => 'token_tree',
-    '#token_types' => 'all',
+    '#token_types' => array('global'),
   );
 
 
