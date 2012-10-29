@@ -1,0 +1,483 @@
+<?php
+
+/**
+ * @file
+ * Enables users to authenticate via a SimpleSAML provider
+ */
+
+define('SIMPLESAML_AUTH_EXCLUDE', 'services/*');
+
+/**
+ * Implements hook_init().
+ *
+ * Traps a page load to see if authentication is required.
+ */
+function simplesaml_auth_init() {
+  global $user;
+
+  // If a user is not logged in, consider using simplesaml authentication.
+  if (!$user->uid) {
+    $force_authentication = _simplesaml_auth_force_login();
+    if ($force_authentication) {
+      simplesaml_auth_login_check($force_authentication);
+    }
+  }
+}
+
+/**
+ * Checks to see if the user needs to be logged in.
+ *
+ * @param $force_authentication
+ *   If TRUE, require that the user be authenticated with simplesaml
+ *   before proceeding. Otherwise, check with the simplesaml server to see if the
+ *   user is already logged in.
+ */
+function simplesaml_auth_login_check($force_authentication = TRUE) {
+  global $user;
+  global $_simplesaml_auth_object;
+  if ($user->uid) {
+    //Don't Login  because we already are
+    return;
+  }
+
+  $basedir = variable_get('simplesaml_auth_installdir', '/var/simplesamlphp');
+
+  require_once($basedir . '/lib/_autoload.php');
+
+  // Initialize simplesamlphp.
+  $authsource = variable_get('simplesamlphp_auth_authsource', 'default-sp');
+
+  // Load simpleSAMLphp, configuration and metadata.
+  $_simplesaml_auth_object = new SimpleSAML_Auth_Simple($authsource);
+
+  // We're going to try simplesaml auth test
+  if ($force_authentication) {
+    $_simplesaml_auth_object->requireAuth();
+  }
+  else {
+    // Set the login tested cookie
+    setcookie('simplesaml_auth_login_checked', 'true');
+    if (!$_simplesaml_auth_object->isAuthenticated()) {
+      return;
+    }
+  }
+
+  // Build the simplesaml_auth_user object and allow modules to alter it.
+  $simplesaml_auth_user = array(
+    'name' => _simplesaml_auth_get_authname($_simplesaml_auth_object->getAttributes()),
+    'login' => TRUE,
+    'register' => variable_get('simplesaml_auth_user_register', TRUE),
+    'attributes' => $_simplesaml_auth_object->getAttributes(),
+  );
+  drupal_alter('simplesaml_auth_user', $simplesaml_auth_user);
+
+  // Bail out if a module denied login access for this user or unset the user
+  // name.
+  if (empty($simplesaml_auth_user['login']) || empty($simplesaml_auth_user['name'])) {
+    // Only set a warning if we forced login.
+    if ($force_authentication) {
+      drupal_set_message(t('The user account %name is not available on this site.', array('%name' => $simplesaml_auth_user['name'])), 'error');
+    }
+    return;
+  }
+
+  $simplesaml_auth_username = $simplesaml_auth_user['name'];
+
+  $account = user_load_by_name($simplesaml_auth_username);
+
+  // Automatic user registration.
+  if (!$account && $simplesaml_auth_user['register']) {
+    // No account could be found and auto registration is enabled, so attempt
+    // to register a new user.
+    $account = simplesaml_auth_user_register($simplesaml_auth_username);
+    if (!$account) {
+      // The account could not be created, set a message.
+      if ($force_authentication) {
+        drupal_set_message(t('A new account could not be created for %simplesaml_auth_username. The username is already in use on this site.', array('%simplesaml_auth_username' => $simplesaml_auth_username)), 'error');
+      }
+      return;
+    }
+  }
+
+  // final check to make sure we have a good user
+  if ($account && $account->uid > 0) {
+    // Save the altered simplesaml name for future use.
+    $_SESSION['simplesaml_auth_username'] = $simplesaml_auth_username;
+
+    $edit = array();
+    // Allow other modules to make their own custom changes.
+    simplesaml_auth_user_module_invoke('presave', $edit, $account);
+
+    // Save the user account and log the user in.
+    $user = user_save($account, $edit);
+    user_login_finalize($edit);
+
+    simplesaml_auth_login_page(!$account->login);
+  }
+  else {
+    $user = drupal_anonymous_user();
+    // Only display error messages only if the user intended to log in.
+    if ($force_authentication) {
+      drupal_set_message(t('No account found for %simplesaml_auth_username.', array('%simplesaml_auth_username' => $simplesaml_auth_username)));
+    }
+  }
+}
+
+/**
+ * Loads the simplesamlphp library.
+ *
+ * @param $path
+ *   Attempt to load simplesamlphp using this path. If omitted, simplesamlphp
+ *   will be loaded using the path defined in the configuration.
+ *
+ * @return
+ *   The simplesamlphp version if the simplesamlphp was successfully loaded, FALSE otherwise.
+ */
+function simplesaml_auth_simplesamlphp_load($path = NULL) {
+  $basedir = isset($path) ? $path : variable_get('simplesaml_auth_installdir', '/var/simplesamlphp');
+
+  require_once($basedir . '/lib/_autoload.php');
+
+  $sa_config = SimpleSAML_Configuration::getInstance();
+  return $sa_config->getVersion();
+}
+
+/**
+ * Gets the authname attribute from the SAML assertion.
+ *
+ * @return
+ *   The authname attribute.
+ */
+function _simplesaml_auth_get_authname($attributes = NULL) {
+  $authname = '';
+
+  // Check if valid local session exists..
+  if (isset($attributes)) {
+    $unique_id = variable_get('simplesamlphp_auth_unique_id', 'uid');
+    if (isset($attributes[$unique_id])) {
+      $authname = $attributes[$unique_id][0];
+    }
+    else {
+      throw new Exception(t('error in simplesaml_auth.module: %unique_id is not valid attribute', array('%unique_id' => $unique_id)));
+    }
+  }
+  return $authname;
+}
+
+/**
+ * Initialize simplesamlphp.
+ *
+ * Will load a simplesamlphp object.
+ */
+function simplesaml_auth_simplesamlphp_init($authsource = NULL) {
+  $authsource = isset($authsource) ? $authsource : variable_get('simplesamlphp_auth_authsource', 'default-sp');
+
+  // Load simpleSAMLphp, configuration and metadata.
+  return new SimpleSAML_Auth_Simple($authsource);
+}
+
+
+/**
+ * Implements hook_permission().
+ */
+function simplesaml_auth_permission() {
+  return array(
+    'administer simplesaml auth' => array(
+      'title' => t('Administer SimpleSAML Auth settings'),
+      'description' => t('Configure simplesamlphp, login/logout redirection, and other settings.'),
+      'restrict access' => TRUE,
+    )
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function simplesaml_auth_menu() {
+  global $user;
+  $items = array();
+  //simplesaml_auth_login_check();
+  $items['admin/config/people/simplesaml-auth'] = array(
+    'title' => 'SimpleSAML Auth settings',
+    'description' => 'Configure SimpleSAML Auth settings',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('simplesaml_auth_admin_settings'),
+    'access arguments' => array('administer simplesaml auth'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'simplesaml_auth.admin.inc',
+  );
+  $items['admin/config/people/simplesaml-auth/settings'] = array(
+    'title' => 'simpleSAMLphp',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10,
+  );
+  $items['saml-login'] = array(
+    'path' => 'saml-login',
+    'title' => 'simpleSAMLphp Login',
+    'page callback' => 'simplesaml_auth_login_page',
+    'access callback' => 'user_is_anonymous',
+    'type' => MENU_SUGGESTED_ITEM,
+  );
+  $items['saml-logout'] = array(
+    'title' => 'simpleSAMLphp Logout',
+    'page callback' => 'simplesaml_auth_logout',
+    'access callback' => 'simplesaml_auth_user_is_logged_in',
+    'type' => MENU_SUGGESTED_ITEM,
+  );
+  return $items;
+}
+
+function simplesaml_auth_user_is_logged_in() {
+  if (!simplesaml_auth_simplesamlphp_load()) {
+    return;
+  }
+
+  $sa = simplesaml_auth_simplesamlphp_init();
+  // Initialize simplesamlphp.
+  return user_is_logged_in() || $sa->isAuthenticated();
+}
+
+/**
+ * Implements hook_menu_site_status_alter().
+ */
+function simplesaml_auth_menu_site_status_alter(&$menu_site_status, $path) {
+  if (user_is_logged_in() && $path == 'saml-login') {
+    // If user is logged in, redirect to '<front>' instead of giving 403.
+    drupal_goto('');
+  }
+}
+
+/**
+ * Implements hook_menu_link_alter().
+ *
+ * Flag this link as needing alter at display time.
+ * @see simplesaml_auth_translated_menu_link_alter().
+ **/
+function simplesaml_auth_menu_link_alter(&$item) {
+  if ($item['link_path'] == 'saml-login' || $item['link_path'] == 'saml-logout') {
+    $item['options']['alter'] = TRUE;
+  }
+}
+
+/**
+ * Implements hook_translated_menu_item_alter().
+ *
+ * Append dynamic query 'destination' to several menu items.
+ **/
+function simplesaml_auth_translated_menu_link_alter(&$item) {
+  if ($item['href'] == 'saml-login') {
+    $item['localized_options']['query'] = drupal_get_destination();
+  }
+  elseif ($item['href'] == 'saml-logout' && !variable_get('simplesaml_auth_logout_destination', '')) {
+    $item['localized_options']['query'] = drupal_get_destination();
+  }
+}
+
+/**
+ * Helper function to rewrite the destination to avoid redirecting to login page after login.
+ *
+ * Instead of the login page, we redirect to the front page.
+ */
+function simplesaml_auth_login_destination() {
+  $destination = user_login_destination();
+  if ($destination['destination'] == 'saml-login') {
+    $destination['destination'] = '';
+  }
+  return $destination;
+}
+
+/**
+ * Redirects to appropriate page based on user settings.
+ *
+ * @param $frist_login
+ *   TRUE if the user was just registered and they should be redirected to the
+ *   configured 'Initial login landing page'.
+ */
+function simplesaml_auth_login_page($first_login = FALSE) {
+  $destination = '';
+  // If it is the user's first simplesaml login and initial login redirection is enabled, go to the set page
+  if ($first_login && variable_get('simplesaml_auth_first_login_destination', '')) {
+    $destination = variable_get('simplesaml_auth_first_login_destination', '');
+    unset($_GET['destination']);
+  }
+
+  // Respect the query string, if transmitted.
+  drupal_goto($destination);
+}
+
+/**
+ * Logs a user out of Drupal and then out of simpleSAMLphp.
+ *
+ * This function does not return, but instead immediately redirects the user
+ * to the simpleSAMLphp server to complete the simplesaml logout process.
+ *
+ * Other modules intending to call this from their implementation of
+ * hook_user_logout() will need to pass $invoke_hook = FALSE to avoid an
+ * infinite recursion. WARNING: since this function does not return, any
+ * later implementations of hook_user_logout() will not run. You may wish to
+ * adjust the hook execution order using hook_module_implements_alter().
+ *
+ * @param $invoke_hook
+ *   If TRUE, invoke hook_user_logout() and save a watchdog mesage indicating
+ *   that the user has logged out.
+ */
+function simplesaml_auth_logout($invoke_hook = TRUE) {
+  global $user;
+
+  if (isset($_GET['destination']) && !url_is_external($_GET['destination'])) {
+    // We do not allow absolute URLs to be passed via $_GET, as this can be an
+    // attack vector.
+    $destination = $_GET['destination'];
+  }
+  else {
+    $destination = variable_get('simplesaml_auth_logout_destination', '');
+  }
+
+  //Make it an absolute url.  This will also convert <front> to the front page.
+  if ($destination) {
+    $destination_url = url($destination, array('absolute' => TRUE));
+  }
+
+  // Mimic user_logout().
+  if ($invoke_hook) {
+    watchdog('user', 'Session closed for %name.', array('%name' => $user->name));
+    module_invoke_all('user_logout', $user);
+  }
+  session_destroy();
+
+  // Force redirection in drupal_goto().
+  unset($_GET['destination']);
+
+  // Initialize simplesamlphp.
+  simplesaml_auth_simplesamlphp_load();
+  $sa = simplesaml_auth_simplesamlphp_init();
+  $sa->logout($destination_url);
+}
+
+/**
+ * Determine if we should require the user be authenticated.
+ *
+ * @return
+ *   TRUE if we should require the user be authenticated, FALSE otherwise.
+ */
+function _simplesaml_auth_force_login() {
+  // The 'saml_auth' page is a shortcut to force authentication.
+  if (arg(0) == 'saml-login') {
+    return TRUE;
+  }
+
+  // Do not force login for XMLRPC, Cron, or Drush.
+  if (stristr($_SERVER['SCRIPT_FILENAME'], 'xmlrpc.php')) {
+    return FALSE;
+  }
+  if (stristr($_SERVER['SCRIPT_FILENAME'], 'cron.php')) {
+    return FALSE;
+  }
+  if (function_exists('drush_verify_cli') && drush_verify_cli()) {
+    return FALSE;
+  }
+
+  // Excluded page do not need login.
+  if ($pages = variable_get('simplesaml_auth_exclude', SIMPLESAML_AUTH_EXCLUDE)) {
+    $path = drupal_get_path_alias($_GET['q']);
+    if (drupal_match_path($path, $pages)) {
+      return FALSE;
+    }
+  }
+
+  // Set the default behavior.
+  $force_login = variable_get('simplesaml_auth_access', 0);
+
+  // If we match the speficied paths, reverse the behavior.
+  if ($pages = variable_get('simplesaml_auth_pages', '')) {
+    $path = drupal_get_path_alias($_GET['q']);
+    if (drupal_match_path($path, $pages)) {
+      $force_login = !$force_login;
+    }
+  }
+
+  return $force_login;
+}
+/**
+ * Implements hook_form_alter().
+ *
+ * Overrides specific from settings based on user policy.
+ */
+function simplesaml_auth_form_alter(&$form, &$form_state, $form_id) {
+
+  //drupal_set_message($form_id.'<pre>'.print_r($form,1).'</pre>');
+  switch ($form_id) {
+
+    case 'user_profile_form':
+      $account = $form['#user'];
+      if (!user_access('administer users')) {
+        // The user is not an administrator, so selectively remove the e-mail
+        // and password fields.
+        if (variable_get('simplesaml_auth_hide_email', 0)) {
+          $form['account']['mail']['#access'] = FALSE;
+        }
+        if (variable_get('simplesaml_auth_hide_password', 0)) {
+          $form['account']['pass']['#access'] = FALSE;
+
+          // Also remove requirement to validate your current password before
+          // changing your e-mail address.
+          $form['account']['current_pass']['#access'] = FALSE;
+          $form['account']['current_pass_required_values']['#access'] = FALSE;
+          $form['#validate'] = array_diff($form['#validate'], array('user_validate_current_pass'));
+        }
+      }
+      break;
+  }
+}
+
+/**
+ * Invokes hook_simplesaml_auth_user_TYPE() in every module.
+ *
+ * We cannot use module_invoke() because the arguments need to be passed by
+ * reference.
+ */
+function simplesaml_auth_user_module_invoke($type, &$edit, $account) {
+  foreach (module_implements('simplesaml_auth_user_' . $type) as $module) {
+    $function = $module . '_simplesaml_auth_user_' . $type;
+    $function($edit, $account);
+  }
+}
+
+/**
+ * Register a simplesaml user with some default values.
+ *
+ * @param $username
+ *   The username of the user.
+ * @param $options
+ *   An associative array of options, with the following elements:
+ *    - 'edit': An array of fields and values for the new user. If omitted,
+ *      reasonable defaults are used.
+ *
+ * @return
+ *   The user object of the created user, or FALSE if the user cannot be
+ *   created.
+ */
+function simplesaml_auth_user_register($username, $options = array()) {
+  // Add some reasonable defaults if they have not yet been provided.
+  $edit = isset($options['edit']) ? $options['edit'] : array();
+  $edit += array(
+    'name' => $username,
+    'pass' => user_password(),
+    'init' => $username,
+    'mail' => variable_get('simplesaml_auth_domain', '') ? $username . '@' . variable_get('simplesaml_auth_domain', '') : '',
+    'status' => 1,
+    'roles' => array(),
+  );
+
+  // See if the user name is already taken.
+  if ((bool) db_select('users')->fields('users', array('name'))->condition('name', db_like($edit['name']), 'LIKE')->range(0, 1)->execute()->fetchField()) {
+    return FALSE;
+  }
+
+  // Create the user account.
+  $account = user_save(drupal_anonymous_user(), $edit);
+  watchdog("user", 'new user: %n (SimpleSAML)', array('%n' => $account->name), WATCHDOG_NOTICE, l(t("edit user"), "admin/user/edit/$account->uid"));
+
+  // Reload to ensure that we have a fully populated user object.
+  return user_load($account->uid);
+}

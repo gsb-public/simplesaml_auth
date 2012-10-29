@@ -1,0 +1,27 @@
+<?php
+
+/**
+ * @file
+ * Installation hooks for the CAS module.
+ */
+
+
+/**
+ * Implements hook_uninstall().
+ */
+function cas_uninstall() {
+  // Delete variables.
+  variable_del('simplesaml_auth_installdir');
+  variable_del('simplesaml_auth_authsource');
+  variable_del('simplesaml_auth_username');
+  variable_del('simplesaml_auth_user_register');
+  variable_del('simplesaml_auth_domain');
+  variable_del('simplesaml_auth_hide_email');
+  variable_del('simplesaml_auth_hide_password');
+  variable_del('simplesaml_auth_access');
+  variable_del('simplesaml_auth_pages');
+  variable_del('simplesaml_auth_exclude');
+  variable_del('simplesaml_auth_first_login_destination');
+  variable_del('simplesaml_auth_logout_destination');
+
+}
