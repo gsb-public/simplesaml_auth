@@ -18,7 +18,7 @@ function simplesaml_auth_admin_settings() {
     '#description' => t('The base directory of simpleSAMLphp. Absolute path with no trailing slash. Ex. /var/simplesamlphp'),
     '#element_validate' => array('token_element_validate'),
     '#after_build' => array('token_element_validate'),
-    '#token_types' => 'all',
+    '#token_types' => array('global'),
   );
 
   // Display the user documentation of placeholders supported by
