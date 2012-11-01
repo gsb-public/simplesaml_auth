@@ -110,6 +110,8 @@ function simplesaml_auth_login_check($force_authentication = TRUE) {
     // Allow other modules to make their own custom changes.
     simplesaml_auth_user_module_invoke('presave', $edit, $account);
 
+    unset($edit['simplesaml_attributes']);
+
     // Save the user account and log the user in.
     $user = user_save($account, $edit);
     user_login_finalize($edit);
