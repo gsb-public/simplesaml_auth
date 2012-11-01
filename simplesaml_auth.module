@@ -106,6 +106,7 @@ function simplesaml_auth_login_check($force_authentication = TRUE) {
     $_SESSION['simplesaml_auth_username'] = $simplesaml_auth_username;
 
     $edit = array();
+    $edit['simplesaml_attributes'] = $simplesaml_auth_user['attributes'];
     // Allow other modules to make their own custom changes.
     simplesaml_auth_user_module_invoke('presave', $edit, $account);
 
