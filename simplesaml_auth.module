@@ -157,7 +157,7 @@ function _simplesaml_auth_get_authname($attributes = NULL) {
 
   // Check if valid local session exists..
   if (isset($attributes)) {
-    $unique_id = variable_get('simplesamlphp_auth_unique_id', 'uid');
+    $unique_id = variable_get('simplesaml_auth_username', 'uid');
     if (isset($attributes[$unique_id])) {
       $authname = $attributes[$unique_id][0];
     }
