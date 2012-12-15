@@ -53,7 +53,10 @@ function simplesaml_auth_login_check($force_authentication = TRUE) {
 
   // We're going to try simplesaml auth test
   if ($force_authentication) {
-    $_simplesaml_auth_object->requireAuth();
+    $options = array(
+      'ReturnTo' => $GLOBALS['base_url'] . '/' . request_path(),
+    );
+    $_simplesaml_auth_object->requireAuth($options);
   }
   else {
     // Set the login tested cookie
@@ -298,15 +301,14 @@ function simplesaml_auth_login_destination() {
  *   configured 'Initial login landing page'.
  */
 function simplesaml_auth_login_page($first_login = FALSE) {
-  $destination = '';
   // If it is the user's first simplesaml login and initial login redirection is enabled, go to the set page
   if ($first_login && variable_get('simplesaml_auth_first_login_destination', '')) {
     $destination = variable_get('simplesaml_auth_first_login_destination', '');
     unset($_GET['destination']);
-  }
 
-  // Respect the query string, if transmitted.
-  drupal_goto($destination);
+    // Respect the query string, if transmitted.
+    drupal_goto($destination);
+  }
 }
 
 /**
