@@ -42,8 +42,13 @@ function simplesaml_auth_login_check($force_authentication = TRUE) {
 
   $basedir = variable_get('simplesaml_auth_installdir', '/var/simplesamlphp');
   $basedir = token_replace($basedir);
-
-  require_once($basedir . '/lib/_autoload.php');
+  
+  $autoload_path = $basedir . '/lib/_autoload.php';
+  if (!file_exists($autoload_path)) {
+    watchdog('simplesaml_auth', 'Cannot find simplesaml at @basedir', array('@basedir' => $basedir));
+    return;
+  }
+  require_once($autoload_path);
 
   // Initialize simplesamlphp.
   $authsource = variable_get('simplesamlphp_auth_authsource', 'default-sp');
