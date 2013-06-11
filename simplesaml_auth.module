@@ -42,7 +42,7 @@ function simplesaml_auth_login_check($force_authentication = TRUE) {
 
   $basedir = variable_get('simplesaml_auth_installdir', '/var/simplesamlphp');
   $basedir = token_replace($basedir);
-  
+
   $autoload_path = $basedir . '/lib/_autoload.php';
   if (!file_exists($autoload_path)) {
     watchdog('simplesaml_auth', 'Cannot find simplesaml at @basedir', array('@basedir' => $basedir));
@@ -148,7 +148,13 @@ function simplesaml_auth_login_check($force_authentication = TRUE) {
 function simplesaml_auth_simplesamlphp_load($path = NULL) {
   $basedir = isset($path) ? $path : variable_get('simplesaml_auth_installdir', '/var/simplesamlphp');
   $basedir = token_replace($basedir);
-  require_once($basedir . '/lib/_autoload.php');
+
+  $autoload_path = $basedir . '/lib/_autoload.php';
+  if (!file_exists($autoload_path)) {
+    watchdog('simplesaml_auth', 'Cannot find simplesaml at @basedir', array('@basedir' => $basedir));
+    return;
+  }
+  require_once($autoload_path);
 
   $sa_config = SimpleSAML_Configuration::getInstance();
   return $sa_config->getVersion();
