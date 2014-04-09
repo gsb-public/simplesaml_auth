@@ -307,19 +307,23 @@ function simplesaml_auth_login_destination() {
 /**
  * Redirects to appropriate page based on user settings.
  *
- * @param $frist_login
- *   TRUE if the user was just registered and they should be redirected to the
- *   configured 'Initial login landing page'.
+ * @param bool $first_login
+ *   (optional) TRUE if the user was just registered and they should be
+ *   redirected to the configured 'Initial login landing page'. Defaults to FALSE.
  */
 function simplesaml_auth_login_page($first_login = FALSE) {
   // If it is the user's first simplesaml login and initial login redirection is enabled, go to the set page
+  $destination = '';
+  $query = array();
   if ($first_login && variable_get('simplesaml_auth_first_login_destination', '')) {
     $destination = variable_get('simplesaml_auth_first_login_destination', '');
-    unset($_GET['destination']);
-
-    // Respect the query string, if transmitted.
-    drupal_goto($destination);
+    if (isset($_GET['destination'])) {
+      $query['destination'] = $_GET['destination'];
+      unset($_GET['destination']);
+    }
   }
+  // Respect the query string, if transmitted.
+  drupal_goto($destination, array('query' => $query));
 }
 
 /**
