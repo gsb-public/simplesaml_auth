@@ -16,11 +16,8 @@ function simplesaml_auth_init() {
   global $user;
 
   // If a user is not logged in, consider using simplesaml authentication.
-  if (!$user->uid) {
-    $force_authentication = _simplesaml_auth_force_login();
-    if ($force_authentication) {
-      simplesaml_auth_login_check($force_authentication);
-    }
+  if(!$user->uid && _simplesaml_auth_force_login() && $_simplesaml_auth_object = simplesaml_auth_login_check(TRUE)) {
+    simplesaml_auth_manage_user_account($_simplesaml_auth_object, TRUE);
   }
 }
 
@@ -37,24 +34,16 @@ function simplesaml_auth_login_check($force_authentication = TRUE) {
   global $_simplesaml_auth_object;
   if ($user->uid) {
     //Don't Login  because we already are
-    return;
+    return FALSE;
   }
 
-  $basedir = variable_get('simplesaml_auth_installdir', '/var/simplesamlphp');
-  $basedir = token_replace($basedir);
-
-  $autoload_path = $basedir . '/lib/_autoload.php';
-  if (!file_exists($autoload_path)) {
-    watchdog('simplesaml_auth', 'Cannot find simplesaml at @basedir', array('@basedir' => $basedir));
-    return;
+  // Load simplesaml files
+  if (!simplesaml_auth_simplesamlphp_load()) {
+    return FALSE;
   }
-  require_once($autoload_path);
 
-  // Initialize simplesamlphp.
-  $authsource = variable_get('simplesamlphp_auth_authsource', 'default-sp');
-
-  // Load simpleSAMLphp, configuration and metadata.
-  $_simplesaml_auth_object = new SimpleSAML_Auth_Simple($authsource);
+  // Get a simplesamlphp object
+  $_simplesaml_auth_object = simplesaml_auth_simplesamlphp_init();
 
   // We're going to try simplesaml auth test
   if ($force_authentication) {
@@ -64,11 +53,28 @@ function simplesaml_auth_login_check($force_authentication = TRUE) {
     $_simplesaml_auth_object->requireAuth($options);
   }
   else {
-    // Set the login tested cookie
-    setcookie('simplesaml_auth_login_checked', 'true');
     if (!$_simplesaml_auth_object->isAuthenticated()) {
-      return;
+      return FALSE;
     }
+  }
+
+ return $_simplesaml_auth_object;
+}
+
+/**
+ * @param $_simplesaml_auth_object
+ *   User object provided by simplesaml.
+ *
+ * @return
+ *   Boolean TRUE if the user account was able to be created or edited.
+ *
+ */
+function simplesaml_auth_manage_user_account($_simplesaml_auth_object, $force_authentication) {
+  global $user;
+
+  // Load simplesaml files
+  if (!simplesaml_auth_simplesamlphp_load()) {
+    return FALSE;
   }
 
   // Build the simplesaml_auth_user object and allow modules to alter it.
@@ -87,31 +93,29 @@ function simplesaml_auth_login_check($force_authentication = TRUE) {
     if ($force_authentication) {
       drupal_set_message(t('The user account %name is not available on this site.', array('%name' => $simplesaml_auth_user['name'])), 'error');
     }
-    return;
+    return FALSE;
   }
 
-  $simplesaml_auth_username = $simplesaml_auth_user['name'];
-
-  $account = user_load_by_name($simplesaml_auth_username);
+  $account = user_load_by_name($simplesaml_auth_user['name']);
 
   // Automatic user registration.
   if (!$account && $simplesaml_auth_user['register']) {
     // No account could be found and auto registration is enabled, so attempt
     // to register a new user.
-    $account = simplesaml_auth_user_register($simplesaml_auth_username);
+    $account = simplesaml_auth_user_register($simplesaml_auth_user['name']);
     if (!$account) {
       // The account could not be created, set a message.
       if ($force_authentication) {
-        drupal_set_message(t('A new account could not be created for %simplesaml_auth_username. The username is already in use on this site.', array('%simplesaml_auth_username' => $simplesaml_auth_username)), 'error');
+        drupal_set_message(t('A new account could not be created for %simplesaml_auth_username. The username is already in use on this site.', array('%simplesaml_auth_username' => $simplesaml_auth_user['name'])), 'error');
       }
-      return;
+      return FALSE;
     }
   }
 
   // final check to make sure we have a good user
   if ($account && $account->uid > 0) {
     // Save the altered simplesaml name for future use.
-    $_SESSION['simplesaml_auth_username'] = $simplesaml_auth_username;
+    $_SESSION['simplesaml_auth_username'] = $simplesaml_auth_user['name'];
 
     $edit = array();
     $edit['simplesaml_attributes'] = $simplesaml_auth_user['attributes'];
@@ -130,9 +134,11 @@ function simplesaml_auth_login_check($force_authentication = TRUE) {
     $user = drupal_anonymous_user();
     // Only display error messages only if the user intended to log in.
     if ($force_authentication) {
-      drupal_set_message(t('No account found for %simplesaml_auth_username.', array('%simplesaml_auth_username' => $simplesaml_auth_username)));
+      drupal_set_message(t('No account found for %simplesaml_auth_username.', array('%simplesaml_auth_username' => $simplesaml_auth_user['name'])));
     }
   }
+
+  return TRUE;
 }
 
 /**
@@ -188,7 +194,7 @@ function _simplesaml_auth_get_authname($attributes = NULL) {
  * Will load a simplesamlphp object.
  */
 function simplesaml_auth_simplesamlphp_init($authsource = NULL) {
-  $authsource = isset($authsource) ? $authsource : variable_get('simplesamlphp_auth_authsource', 'default-sp');
+  $authsource = !empty($authsource) ? $authsource : variable_get('simplesamlphp_auth_authsource', 'default-sp');
 
   // Load simpleSAMLphp, configuration and metadata.
   return new SimpleSAML_Auth_Simple($authsource);
