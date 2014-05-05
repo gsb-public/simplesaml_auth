@@ -32,7 +32,7 @@ function simplesaml_auth_init() {
 function simplesaml_auth_login_check($force_authentication = TRUE) {
   global $user;
   global $_simplesaml_auth_object;
-  if ($user->uid) {
+  if (!$force_authentication && $user->uid) {
     //Don't Login  because we already are
     return FALSE;
   }
