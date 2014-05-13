@@ -30,13 +30,6 @@ function simplesaml_auth_init() {
  *   user is already logged in.
  */
 function simplesaml_auth_login_check($force_authentication = TRUE) {
-  global $user;
-  global $_simplesaml_auth_object;
-  if (!$force_authentication && $user->uid) {
-    //Don't Login  because we already are
-    return FALSE;
-  }
-
   // Load simplesaml files
   if (!simplesaml_auth_simplesamlphp_load()) {
     return FALSE;
@@ -45,17 +38,13 @@ function simplesaml_auth_login_check($force_authentication = TRUE) {
   // Get a simplesamlphp object
   $_simplesaml_auth_object = simplesaml_auth_simplesamlphp_init();
 
-  // We're going to try simplesaml auth test
-  if ($force_authentication) {
+  // If we are forcing authentication or the user is not authenticated then
+  // redirect them to be authenticated.
+  if ($force_authentication || !$_simplesaml_auth_object->isAuthenticated()) {
     $options = array(
       'ReturnTo' => $GLOBALS['base_url'] . '/' . request_path(),
     );
     $_simplesaml_auth_object->requireAuth($options);
-  }
-  else {
-    if (!$_simplesaml_auth_object->isAuthenticated()) {
-      return FALSE;
-    }
   }
 
  return $_simplesaml_auth_object;
