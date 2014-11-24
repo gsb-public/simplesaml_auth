@@ -122,6 +122,27 @@ function simplesaml_auth_admin_settings() {
     '#description' => t("Indicates which pages will be ignored (no login checks). Enter one page per line as Drupal paths. The '*' character is a wildcard. Example paths are '<em>blog</em>' for the blog page and '<em>blog/*</em>' for every personal blog. '<em>&lt;front&gt;</em>' is the front page."),
   );
 
+  $form['private_files'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Private Files'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+  );
+
+  $form['private_files']['simplesaml_auth_private_files_base_path'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Private Files Base Path'),
+    '#default_value' => variable_get('simplesaml_auth_private_files_base_path', ''),
+    '#size' => 30,
+    '#maxlength' => 255,
+    '#description' => t("Indicates the private files base path"),
+  );
+
+  $form['private_files']['simplesaml_auth_check_private_file_access'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enforce Authentication for Private Files'),
+    '#default_value' => variable_get('simplesaml_auth_check_private_file_access', 1),
+  );
 
   $form['misc'] = array(
     '#type' => 'fieldset',

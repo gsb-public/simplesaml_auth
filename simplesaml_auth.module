@@ -199,6 +199,11 @@ function simplesaml_auth_permission() {
       'title' => t('Administer SimpleSAML Auth settings'),
       'description' => t('Configure simplesamlphp, login/logout redirection, and other settings.'),
       'restrict access' => TRUE,
+    ),
+    'download simplesaml private files' => array(
+      'title' => t('Download Simple Saml Private Files'),
+      'description' => t('Allow access to Simple Saml Private Files.'),
+      'restrict access' => TRUE,
     )
   );
 }
@@ -412,6 +417,15 @@ function _simplesaml_auth_force_login() {
     }
   }
 
+  // If we match the private files path, force login
+  if ($private_files_path = variable_get('simplesaml_auth_private_files_base_path', '')) {
+    $path = drupal_get_path_alias($_GET['q']);
+    $private_files_path = 'system/files/' . $private_files_path;
+    if (drupal_match_path($path, $private_files_path)) {
+      $force_login = 1;
+    }
+  }
+
   return $force_login;
 }
 /**
@@ -496,4 +510,17 @@ function simplesaml_auth_user_register($username, $options = array()) {
 
   // Reload to ensure that we have a fully populated user object.
   return user_load($account->uid);
+}
+
+/**
+ * Implements hook_file_download().
+ *
+ */
+function simplesaml_auth_file_download($uri, $field_type = 'file') {
+  if (variable_get('simplesaml_auth_check_private_file_access', 1) && drupal_match_path($uri,'private://' . variable_get('simplesaml_auth_private_files_base_path', ''))) {
+    if (!user_access('download simplesaml private files')) {
+      return -1;
+    }
+  }
+  return null;
 }
