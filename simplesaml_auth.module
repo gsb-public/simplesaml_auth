@@ -16,7 +16,16 @@ function simplesaml_auth_init() {
   global $user;
 
   // If a user is not logged in, consider using simplesaml authentication.
-  if(!$user->uid && _simplesaml_auth_force_login() && $_simplesaml_auth_object = simplesaml_auth_login_check(TRUE)) {
+  if(!$user->uid && _simplesaml_auth_force_login()) {
+    simplesaml_auth_login();
+  }
+}
+
+/**
+ * Logs in using Simple Saml.
+ */
+function simplesaml_auth_login() {
+  if($_simplesaml_auth_object = simplesaml_auth_login_check(TRUE)) {
     simplesaml_auth_manage_user_account($_simplesaml_auth_object, TRUE);
   }
 }
@@ -523,4 +532,16 @@ function simplesaml_auth_file_download($uri, $field_type = 'file') {
     }
   }
   return null;
+}
+
+/**
+ * Implementation of hook_gsb_restricted_pages_info
+ * Returns login callback for GSB Restricted Pages
+ */
+function simplesaml_auth_gsb_restricted_pages_info() {
+  return array(
+    'stanford' => array(
+      'callback' => 'simplesaml_auth_login',
+    ),
+  );
 }
