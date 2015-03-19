@@ -266,6 +266,15 @@ function simplesaml_auth_user_is_logged_in() {
   return user_is_logged_in() || $sa->isAuthenticated();
 }
 
+function simplesaml_auth_user_authenticated() {
+  if (!simplesaml_auth_simplesamlphp_load()) {
+    return false;
+  }
+  // Initialize simplesamlphp.
+  $sa = simplesaml_auth_simplesamlphp_init();
+  return $sa->isAuthenticated();
+}
+
 /**
  * Implements hook_menu_site_status_alter().
  */
