@@ -197,7 +197,7 @@ function simplesaml_auth_simplesamlphp_init($authsource = NULL) {
   $authsource = !empty($authsource) ? $authsource : variable_get('simplesamlphp_auth_authsource', 'default-sp');
 
   // Load simpleSAMLphp, configuration and metadata.
-  return new new SimpleSAML\Auth\Simple($authsource);
+  return new SimpleSAML\Auth\Simple($authsource);
 }
 
 
